@@ -1,0 +1,96 @@
+//load_file("nrngui.hoc") 
+//load_proc("nrnmainmenu")
+
+// ************************** Model specification *******************************
+proc params() {
+	// Geometrical properties
+	num_nodes = 51				// number of nodes [unitless]
+	node_diam = 7				// node diameter [um]
+	node_length = 1				// node length [um]
+	myelin_length = 100			// internodal length [um]
+	
+	// Electrical properties
+	node_cm = 1					// specific membrane capacitance [uF/cm^2]
+	rhoa = 100					// intracellular resistivity [ohm-cm]
+	node_Rm = 1500				// specific membrane resistance [ohm-cm^2]
+	
+	// Stimulus parameters
+	mydel = 5					// start at t=5ms [ms]
+	myamp = 0.5					// amplitude [nA]
+	mydur = 1					// duration, aka pulsewidth [ms]
+	
+	// Temporal parameters
+	dt = 0.005					// [ms]
+	tstop = 10					// [ms]
+	num_timesteps = int(tstop/dt) + 1
+	
+	// Other parameters
+	v_init = -70				// [mV]
+	celsius = 37				// [deg C]
+}
+params()
+
+// ************************** Model initialization ******************************
+create axon[num_nodes]
+proc initialize() {local i
+	for i = 0, num_nodes - 1 {
+		axon[i] {
+			nseg 	= 1
+			diam 	= node_diam
+			L 		= node_length
+			Ra 		= rhoa * ((node_length+myelin_length)/node_length)
+			cm		= node_cm
+			
+			// Insert passive channel
+			insert pas
+			g_pas = 1/node_Rm
+			
+		}
+	}
+	
+	for i = 0, num_nodes - 2 {
+		connect axon[i](1), axon[i+1](0)
+	}
+}
+initialize()
+
+// ************************** Instrumentation ***********************************
+// Intracellular stimulation
+objref stim
+proc int_stim() {
+	axon[10] {
+		stim = new IClamp()
+		stim.loc(0.5)
+		stim.del = mydel
+		stim.amp = myamp
+		stim.dur = mydur
+	}
+}
+int_stim()
+
+// Record Vm(t) at all nodes
+objref Vm_vec[num_nodes]
+for i = 0, num_nodes - 1 {
+	Vm_vec[i] = new Vector(num_timesteps,0)
+	Vm_vec[i].record(&axon[i].v(0.5),dt)
+}
+
+// ************************** Simulation control ********************************
+proc stimul() {
+	finitialize(v_init)
+	while(t<tstop) {
+		fadvance()
+	}
+}
+stimul()
+
+// ************************** Data analysis & output ****************************
+// Plot Vm(t) at the axon's center
+objref g1
+proc plot_data() {
+	g1 = new Graph()
+	g1.size(0, num_timesteps, -100, 0)
+	Vm_vec[int(num_nodes/2)].plot(g1)
+    //Vm_vec[num_nodes-1].plot(g1)
+}
+plot_data()

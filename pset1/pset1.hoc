@@ -1,0 +1,150 @@
+//load_file("nrngui.hoc")
+//load_proc("nrnmainmenu")
+
+// How to save vectors? How to plot vectors(x)? How to do loops?
+
+// ************************** Model specification *******************************
+proc params() {
+
+	// Geometrical properties
+    fiber_diam = $1                     // fiber diameter
+	num_nodes = $2				        // number of nodes [unitless]
+    my_nseg = $3                        // segment per node [unitless]
+
+    node_diam = 0.7*fiber_diam          // node diameter [um]
+    node_diam_cm = node_diam/10^4       // node diameter [cm]
+    node_length = 1.5                   // node length [um]
+    node_length_cm = node_length/10^4   // node length [cm]
+    myelin_length = 100                 // internodal myelin length [um]
+    myelin_length_cm = myelin_length/10^4 
+    elec_dist = 50                       // shortest dis from electrode to a node [mm]
+    elec_dist_um = elec_dist*10^3      // convert to neuron default length unit [um]
+
+    // For calculating extracellular V due to electrode [um]
+    internodal_length = myelin_length + 0.5*node_length
+
+	// Electrical properties
+	node_cm = 1					// specific membrane capacitance [uF/cm^2]
+	node_rm = 2000              // specific membrane resistance [ohm-cm^2]
+	rho_a = 100					// intracellular resistivity [ohm-cm]
+    rho_a_adj = rho_a*((node_length_cm+myelin_length_cm)/node_length_cm)    // adjusted rho_a so Neuron can get the same internodal resistance [ohm-cm]
+    rho_e = 500                 // extracellular resistivity [ohm-cm]
+    //rho_e_adj = ??
+
+    // Segment electrical properties -- for part 1 of problem 1
+    my_Ra = 4*rho_a*(myelin_length_cm+node_length_cm)/(PI*node_diam_cm^2)  // internodal resistance [ohm]
+    my_Cm = node_cm*(PI*node_length_cm)*node_diam_cm   // nodal membrane cap [uF]
+    my_Rm = node_rm/(PI*node_length_cm*node_diam_cm)   // nodal membrane res [ohm]
+	
+	// Stimulus parameters
+	mydel = 5					// start at t=5ms [ms]
+	myamp = -500000  			// amplitude [nA]. Cathodic current -- negative
+	mydur = 0.1					// duration, aka pulsewidth [ms] -- 0.1ms=100us
+	
+	// Temporal parameters
+	dt = 0.005					// [ms]
+	tstop = 10					// [ms]
+	num_timesteps = int(tstop/dt) + 1
+	
+	// Other parameters
+	v_init = -70				// [mV]
+	celsius = 37				// [deg C]
+}
+params(1, 51, 1)
+
+// ************************** Model initialization ****************************
+create axon[num_nodes]
+proc initialization() { 
+    for i = 0, num_nodes - 1 {
+        axon[i] {
+            nseg = my_nseg
+            diam = node_diam
+            L = node_length
+            Ra = rho_a_adj
+            cm = node_cm
+
+            // Insert passive channel
+            insert pas
+            g_pas = 1/node_rm
+
+            // Insert extracellular potential
+            insert extracellular
+        }
+    }
+    for i = 0, num_nodes - 2 {
+        connect axon[i](1), axon[i+1](0)
+    }
+}
+initialization()
+
+// ************************** Instrumentation ***********************************
+// Extracellular stimulation
+
+// Dummy stimulation attachment...why do we need this anyways?
+objref stim
+create dummy_elec
+proc dummy_stim() {
+    dummy_elec {
+        stim = new IClamp()
+        stim.loc(0.5)       // which section though?...
+        stim.del = mydel
+        stim.amp = myamp
+        stim.dur = mydur
+    }
+}
+dummy_stim()
+
+func calcDist () {
+    /* $1 is current node, $2 is node where electrode is
+     * Use internodal distance as myelin_length + 0.5*node_length
+     * Return in um
+     */
+    return sqrt((abs($1-$2)*internodal_length)^2 + elec_dist_um^2)
+}
+
+// calculate distance from electrode to each axon
+// unit in [um]
+objref r_vec
+r_vec = new Vector(num_nodes, 0)
+elec_node_idx = int(num_nodes/2) 
+for i=0, num_nodes-1 {
+    r_vec.x[i] = calcDist(i, elec_node_idx)
+}
+
+// Record Vm(t) at all nodes, unit in [mV]
+objref Vm_vec[num_nodes]
+for i=0, num_nodes-1 {
+    Vm_vec[i] = new Vector(num_timesteps, 0)
+    Vm_vec[i].record(&axon[i].v(0.5), dt)
+}
+
+// Time variable
+objref t_vec
+t_vec = new Vector()
+t_vec.record(&t)
+
+
+// *********************** Simulation control *****************
+proc sim() {
+    finitialize(v_init)
+    while(t < tstop) {
+        // apply extracellular potential
+        for i=0, num_nodes-1 {
+            axon[i].e_extracellular = 10^3*rho_e*stim.i/(4*PI*r_vec.x[i])    // [mV]
+        }
+        fadvance()
+    }
+}
+sim()
+
+// ************************** Data analysis & output ****************************
+// Plot Vm(t) at axon's center, and Vm(x)
+objref g1
+proc plot_data() {
+    g1 = new Graph()
+    g1.size(0, num_timesteps, -80, -30)
+    Vm_vec[$1].plot(g1)
+}
+plot_data(elec_node_idx)
+
+// ************************** Saving data ***************************
