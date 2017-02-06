@@ -22,7 +22,7 @@ def calcParams(fiber_diam, num_nodes, my_nseg, elec_dist, myamp):
         num_nodes: number of axon nodes
         my_nseg: number of segments per section
         elec_dist: perp distance from electrode to axon [mm]
-        myamp: stimulation current, cathodic=negative. [nA]
+        myamp: stimulation current, cathodic=negative. [nA].
     """
 
     # Derived geometrical params
@@ -143,8 +143,15 @@ def run_sim(axons, dummy_stim, r_vec, params):
     h.finitialize(params.v_init)
     while (h.t < h.tstop):
         for i in range(params.num_nodes):
-            # apply extracellular potention -- multiply by 10^3 to convert to [uV] to [mV]
-            axons[i].e_extracellular = (10**3)*params.rho_e*dummy_stim.i/(4*pi*r_vec[i])
+            """
+            apply extracellular potential -- 
+            If dummy_stim.i is in mA, then
+             I/(4*pi*sigma*r) = (I*rho_e)/(4*pi*r) = ([mA][ohm-cm])/([um]) -> multiply by 10^4 to get mV
+
+            If dummy_stim.i is in nA, then
+             I/(4*pi*sigma*r) = (I*rho_e)/(4*pi*4) = ([nA][ohm-cm])/([um]) -> multiply by (1/10^6)/(1/10^4)=10^-2 to get mV
+            """
+            axons[i].e_extracellular = (10**-2)*params.rho_e*dummy_stim.i/(4*pi*r_vec[i])
         h.fadvance()
 
 def run_Neuron(fiber_diam, num_nodes, my_nseg, elec_dist, myamp, axons=None, dummy_elec=None, dummy_stim=None, Vm_vec=None, t_vec=None):
@@ -168,6 +175,9 @@ dummy_stim = None
 Vm_vec = None
 t_vec = None
 
+#params = calcParams(12, 51, 1, 1, 0.1)
+#axons = editAxons(axons, params)
+
 def p1_2(axons, dummy_elec, dummy_stim, Vm_vec, t_vec):
     """
     Fix electrode at 1mm from axon, vary D from 1um to 21um in 2um increment.
@@ -175,15 +185,15 @@ def p1_2(axons, dummy_elec, dummy_stim, Vm_vec, t_vec):
     relationship
     """
     threshCur = []
-    D = np.arange(1.0, 21.0, 2.0)
+    D = np.arange(1.0, 22.0, 2.0)
     for d in D:
         fiber_diam = d    # starting d, in [um]
         num_nodes = 51    # must be int
         my_nseg = 1       # must be int
         elec_dist = 1.0   # starting 1mm
                 
-        lo_amp = -0.5       # low cathodic current limit 
-        hi_amp = -10        # high cathodic current  limit
+        lo_amp = -10**2     # low cathodic current limit [nA]
+        hi_amp = -10**8     # high cathodic current  limit [nA]
         
         # starting in the middle -- binary search
         myamp = np.mean((lo_amp, hi_amp))      
@@ -207,23 +217,24 @@ def p1_2(axons, dummy_elec, dummy_stim, Vm_vec, t_vec):
                            axons, dummy_elec, dummy_stim, Vm_vec, t_vec)
             Vm_vec_py = np.array(Vm_vec)
 
-        print "D=%.2fum, r=%.2fmm: %.2fnA extra-cellular stimulation, max change in Vm=%.2fmV" % (fiber_diam, elec_dist, dummy_stim.amp, Vm_vec_py.max()-h.v_init)
+        print "D=%.2fum, r=%.2fmm: %.2fnA or %.2fmA extra-cellular stimulation, max change in Vm=%.2fmV" % \
+                (fiber_diam, elec_dist, dummy_stim.amp, dummy_stim.amp/10**6, Vm_vec_py.max()-h.v_init)
         threshCur.append(dummy_stim.amp)
 
     # plot threshold current
     plt.figure()
-    plt.plot(D, np.abs(threshCur), '*-')
+    plt.plot(D, np.abs(threshCur)/10**6, '*-')
     plt.xlabel("D (um)")
-    plt.ylabel("Threshold current magnitude (nA)")
-    plt.ylim((0, 10))
+    plt.ylabel("Threshold current magnitude (mA)")
+    plt.ylim((0, 1))
     plt.title("D vs. |I|")
     plt.show(block=False)
     plt.savefig('diameter.png', bbox_inches='tight')
 
     return (axons, dummy_elec, dummy_stim, Vm_vec, t_vec)
 # run p1_2
-(axons, dummy_elec, dummy_stim, Vm_vec, t_vec) = \
-        p1_2(axons, dummy_elec, dummy_stim, Vm_vec, t_vec)
+#(axons, dummy_elec, dummy_stim, Vm_vec, t_vec) = \
+#        p1_2(axons, dummy_elec, dummy_stim, Vm_vec, t_vec)
 print ""
 
 def p1_3(axons, dummy_elec, dummy_stim, Vm_vec, t_vec):
@@ -238,13 +249,13 @@ def p1_3(axons, dummy_elec, dummy_stim, Vm_vec, t_vec):
     threshCur = []
     r = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50]    # elec_dist in mm
     for rr in r:
-        fiber_diam = 11.0    # starting d, in [um]
+        fiber_diam = 11.0  # starting d, in [um]
         num_nodes = 51     # must be int
         my_nseg = 1        # must be int
         elec_dist = rr     # starting r, in [mm]
                 
-        lo_amp = -0.05      # low cathodic current limit [nA]
-        hi_amp = -800000    # high cathodic current  limit [nA]
+        lo_amp = -10**2       # low cathodic current limit [nA]
+        hi_amp = -8*10**10    # high cathodic current  limit [nA]
         
         # starting in the middle -- binary search
         myamp = np.mean((lo_amp, hi_amp))      
@@ -268,23 +279,21 @@ def p1_3(axons, dummy_elec, dummy_stim, Vm_vec, t_vec):
                            axons, dummy_elec, dummy_stim, Vm_vec, t_vec)
             Vm_vec_py = np.array(Vm_vec)
 
-        print "D=%.2fum, r=%.2fmm: %.2fnA extra-cellular stimulation, max change in Vm=%.2fmV" % (fiber_diam, elec_dist, dummy_stim.amp, Vm_vec_py.max()-h.v_init)
+        print "D=%.2fum, r=%.2fmm: %.2fnA or %.2fmA extra-cellular stimulation, max change in Vm=%.2fmV" % \
+            (fiber_diam, elec_dist, dummy_stim.amp, dummy_stim.amp/10**6, Vm_vec_py.max()-h.v_init)
         threshCur.append(dummy_stim.amp)
 
     # plot threshold current
-    plt.figure()
-    plt.plot(r, np.abs(threshCur), '*-')
-    plt.xlabel("Electrode to fiber distance (mm)")
-    plt.ylabel("Threshold current magnitude (nA)")
+    plt.ylabel("Threshold current magnitude (mA)")
     #plt.ylim((0, 10))
     plt.title("r vs. |I|")
     plt.show(block=False)
     plt.savefig('elec_dist.png', bbox_inches='tight')
 
     plt.figure()
-    plt.semilogy(r, np.abs(threshCur), '*-')
+    plt.semilogy(r, np.abs(threshCur)/10**6, '*-')
     plt.xlabel("Electrode to fiber distance (mm)")
-    plt.ylabel("Threshold current magnitude (nA)")
+    plt.ylabel("Threshold current magnitude (mA)")
     #plt.ylim((0, 10))
     plt.title("r vs. log(|I|)")
     plt.show(block=False)
