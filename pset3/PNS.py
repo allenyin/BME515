@@ -85,6 +85,9 @@ class MyelinatedNerve(object):
         self.given.fiber_diam = fiber_diam
         self.params = self.given.copy()
         self.params.update(self.calcParams(self.given))
+        self.params = Bunch(self.params)
+        for axon in self.axons:
+            axon = self.editOneAxon(axon)
 
     def add_nodes(self, n_new):
         self.given.num_nodes = self.given.num_nodes + n_new
@@ -98,7 +101,6 @@ class MyelinatedNerve(object):
         #import pdb; pdb.set_trace()
         self.axons = self.createAxons(self.params.num_nodes)
 
-    
     def createAxons(self, n):
         """
         Create n axons
@@ -186,8 +188,10 @@ class StimSim(object):
         nerve: MyelinatedNerve object reference
         elec:  DummyElectrode object reference
         simParams: simulation parameter bunch
-        Vm_vec:   Hoc vector containing Vm
-        t_vec:    Hoc vector containing time
+        Vm_vec:   Hoc vector containing Vm      (in mV)
+        t_vec:    Hoc vector containing time    (in mS)
+        Im_vec:   Hoc vector containing transmembrane current. (in mA/cm^2)
+                  Initialized if constructor 'recordI' is true
     """
     def __init__(self, nerve, elec, simBunch):
         self.nerve = nerve
@@ -197,13 +201,26 @@ class StimSim(object):
         self.simParams.num_timesteps = num_timesteps
         self.create_vectors()
 
-    def create_vectors(self):
+    def create_vectors(self, recordI=False):
         self.Vm_vec = []
+        self.Im_vec = []
         for i in range(self.nerve.params.num_nodes):
             self.Vm_vec.append(h.Vector(self.simParams.num_timesteps, 0))
             self.Vm_vec[i].record(self.nerve.axons[i](0.5)._ref_v)
+            self.Im_vec.append(h.Vector(self.simParams.num_timesteps, 0))
+            self.Im_vec[i].record(self.nerve.axons[i](0.5)._ref_i_membrane)
+
         self.t_vec = h.Vector()
         self.t_vec.record(h._ref_t)
+
+    def getImVec(self):
+        # convert the Im_vec [mA/cm^2] by multiplying area [um^2], to give nA
+        area = pi * self.nerve.params.node_diam * self.nerve.params.node_len
+        print "getImVec: diam=", self.nerve.axons[0].diam
+        print "getImVec: area=", area 
+        Im_vec_nA = np.array(self.Im_vec)
+        Im_vec_nA = Im_vec_nA*area
+        return Im_vec_nA
 
     def change_tstop(self, tstop):
         self.simParams.tstop = tstop
@@ -218,6 +235,7 @@ class StimSim(object):
     def setup_vectors(self):
         if self.Vm_vec[0].size() != self.simParams.num_timesteps:
             self.Vm_vec = [v.resize(self.simParams.num_timesteps) for v in self.Vm_vec]
+            self.Im_vec = [i.resize(self.simParams.num_timesteps) for i in self.Im_vec]
     
     def setup_sim(self):
         h.dt = self.simParams.dt
@@ -226,6 +244,7 @@ class StimSim(object):
         h.finitialize(self.simParams.v_init)
 
     def calcDist(self, idx):
+        # results in um
         elecIdx = self.simParams.elec_node_idx
         internodal_len = self.nerve.params.internodal_len
         elec_dist_um = self.simParams.elec_dist * 10**3
@@ -238,6 +257,10 @@ class StimSim(object):
         rho_e = self.nerve.params.rho_e
 
         r_vec = [self.calcDist(i) for i in range(num_nodes)] 
+        '''
+        If dummy_stim.i is in nA, then
+        I/(4*pi*sigma*r) = (I*rho_e)/(4*pi*4) = ([nA][ohm-cm])/([um]) -> multiply by (1/10^6)/(1/10^4)=10^-2 to get mV
+        '''
         while(h.t < h.tstop):
             for i in range(num_nodes):
                 # apply extracellular potential

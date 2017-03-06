@@ -24,7 +24,7 @@ initBunch2.rho_e = 500       # [ohm-cm]
 initBunch2.node_cm = 2.5     # [uF/cm^2]
 initBunch2.node_len = 1.5    # [um]
 initBunch2.scale_len = 100.0
-nerve2 = MyelinatedNerve(initBunch2, passiveCh)  
+nerve2 = MyelinatedNerve(initBunch2, passiveSweeneyCh)  
 
 # Initialize stimulating electrode
 myamp = -0.115e-3/1e-9
@@ -288,6 +288,12 @@ def p1_5(Ith, durations):
     print "Irh=%.2fmA, Tch=%.2fmS" % (Irh/10**6, Tch)
 
     weissFn = lambda x: Irh*(1+Tch/x)       # gives value in nA
+    # calculate percent residuals
+    Ith_pred = [weissFn(i) for i in durations]
+    perc_residuals = [np.abs((Ith_pred[i]-Ith[i])/Ith[i]) for i in range(len(Ith))]
+    print "Average residual of the fit is %.2f%%" % (np.mean(perc_residuals)*100)
+
+    # make the fit for plotting
     fitDur = np.logspace(-2, 1, num=100)   # logspace from 0.01ms to 10ms
     fit = [weissFn(i) for i in fitDur]
     fit = np.concatenate(fit, axis=1)
@@ -314,8 +320,8 @@ def p1_5(Ith, durations):
     
 
 threshCur1 = p1_1()
-#threshCur2 = p1_2()
-#threshCur3 = p1_3_1()
-#(Vm_cat, Vm_an) = p1_3_2(threshCur1, threshCur3)
-#p1_4(Vm_cat, Vm_an, sim1)
+threshCur2 = p1_2()
+threshCur3 = p1_3_1()
+(Vm_cat, Vm_an) = p1_3_2(threshCur1, threshCur3)
+p1_4(Vm_cat, Vm_an, sim1)
 Irh, Tch = p1_5(threshCur1, durations)
