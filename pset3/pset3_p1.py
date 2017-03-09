@@ -83,6 +83,37 @@ f.set_size_inches([11,8])
 plt.savefig('p1_node_Vm_Im.png', bbox_inches='tight')
 
 '''
+Plot 2, 3: 
+Stimulation starts at 5ms, lasts 0.4ms, dt=0.005ms.
+So plot Vm, Im @ [5ms, 5.05ms, 5.10ms, 5.15ms, 5.20ms] for all nodes
+plot action potential Vm, Im at all nodes at time.
+
+The time is [1000, 1100, 1200, 1300, 1400]
+'''
+d_idx = [1,3,5,7,9]
+f, axarr = plt.subplots(len(d_idx), sharex=True)
+for i in np.arange(len(axarr)):
+    axarr[i].set_title('Diameter=%d over entire fiber' % (D[d_idx[i]]))
+    axarr[i].set_ylabel('Vm (mV)')
+    for t in [1000, 1050, 1100, 1150, 1200]:
+        axarr[i].plot(np.arange(initBunch.num_nodes), Vm_list[i][:, t])
+axarr[-1].set_xlabel('Node')
+plt.show(block=False)
+plt.savefig('p1_allNode_Vm.png', bbox_inches='tight')
+f.set_size_inches([11,11])
+
+f, axarr = plt.subplots(len(d_idx), sharex=True)
+for i in np.arange(len(axarr)):
+    axarr[i].set_title('Diameter=%d over entire fiber' % (D[d_idx[i]]))
+    axarr[i].set_ylabel('Im (nA)')
+    for t in [1000, 1050, 1100, 1150, 1200]:
+        axarr[i].plot(np.arange(initBunch.num_nodes), Im_list[i][:, t])
+axarr[-1].set_xlabel('Node')
+plt.show(block=False)
+plt.savefig('p1_allNode_Im.png', bbox_inches='tight')
+f.set_size_inches([11,11])
+
+'''
 Plot 3: plot the peak Im as a function of diameter.
         Take the peak current as the max of the current observed in 
         nodes 40 to 49, as the Im there changes after Im change in the 
