@@ -94,6 +94,7 @@ axarr[0].set_ylabel('Vm (mV)')
 plt.show(block=True)
 '''
 
+'''
 #----------------------
 # Testing saving data
 #----------------------
@@ -131,6 +132,8 @@ for i in np.arange(len(bundle_diam)):
     list_num_nodes.append(int(max_nerve_len/cur_internodal_len)//2*2+1)
 
 # Try fiber 10 and 90 -- plot voltage over entire fiber every 100ms
+# Expect to see Action potentials at each node to be slightly shifted from each other
+# in time.
 t_vec_py = np.load('./sim_data/t_vec_py_baseRate.npy')
 
 Vm_vec_py_10 = np.load('./sim_data/Vm_vec_py_fiber10_baseRate.npy')
@@ -161,4 +164,121 @@ for i in range(len(nodeIdx)):
 axarr[-1].set_xlabel('Time (mS)')
 axarr[0].set_title('Fiber 90, baseRate=%d Hz, diam=%.2f um' % (base_freq[90], bundle_diam[90]))
 plt.show(block=False)
+'''
 
+#----------------------------------------------
+# Test effects of electrode size on fiber's ENG
+#----------------------------------------------
+import numpy as np
+pi = np.pi
+from matplotlib import pyplot as plt
+from bunch import Bunch
+
+np.random.seed(13)  # set seed so we get fixed results
+bundle_diam = np.concatenate([np.random.normal(15, 2.5, 50), np.random.normal(4, 1.5, 50)])
+base_freq = np.random.randint(10, 20, 100)
+active_freq = np.random.randint(30, 60, 100)
+
+initBunch = Bunch()
+initBunch.scale_diam = 0.6
+initBunch.num_nodes = 51    # number of nodes the longest fiber will have
+initBunch.fiber_diam = 12   # default...will change
+initBunch.num_seg = 1
+initBunch.rho_a = 54.7      # [ohm-cm]
+initBunch.rho_e = 500       # [ohm-cm]
+initBunch.node_cm = 2.5     # [uF/cm^2]
+initBunch.node_len = 1.5    # [um]
+initBunch.scale_len = 100.0
+
+max_internodal_len = initBunch.scale_len * bundle_diam[np.argmax(bundle_diam)]+0.5*initBunch.node_len
+max_nerve_len = max_internodal_len * initBunch.num_nodes
+
+# Get the number of nodes needed for each fiber
+list_num_nodes = []
+for i in np.arange(len(bundle_diam)):
+    cur_internodal_len = initBunch.scale_len*bundle_diam[i] + 0.5*initBunch.node_len
+    list_num_nodes.append(int(max_nerve_len/cur_internodal_len)//2*2+1)
+
+# Try fiber 10 and 90 -- 
+# For each fiber finds the voltage measured at electrode spaced different
+# distance apart and plot tripolar recordings.
+
+fiberIdx = 90
+rate = 'baseRate'
+t_vec_py = np.load('./sim_data/t_vec_py_%s.npy' % (rate))
+
+K = [4.0, 5.0, 6.0, 10.0, 14.0, 15.0]   # recording electrode spacing in [mm]
+V1 = []
+V2 = []
+V3 = []
+
+# Initialize electrode measurment
+for kk in K:
+    V1.append(np.zeros(len(t_vec_py)))
+    V2.append(np.zeros(len(t_vec_py)))
+    V3.append(np.zeros(len(t_vec_py)))
+
+# Load fiber one-by-one and calculate contribution to electrode
+print 'Nerve %d...' % (fiberIdx)
+internodal_len = initBunch.scale_len * bundle_diam[fiberIdx] + 0.5*initBunch.node_len
+num_nodes = list_num_nodes[fiberIdx]
+idx_center_node = (num_nodes-1)/2   # also half-len
+
+cur_Im_vec = np.load('./sim_data/Im_vec_py_fiber%d_%s.npy' % (fiberIdx, rate))
+node_diam = initBunch.scale_diam * bundle_diam[fiberIdx]
+area = pi * node_diam * initBunch.node_len
+cur_Im_vec *= area
+
+elec_dist = 1000
+for kIdx in range(len(K)):
+    kval = K[kIdx]
+    e2_offset = 0              # electrode 2 aligned with center electrode
+    e1_offset = -kval*(10**3)  # electrode 1 offset from center [um]
+    e3_offset = kval*(10**3)   # electrode 3 offset from center [um]
+
+    node_vec = np.arange(num_nodes)
+    node_vec.shape = (num_nodes, 1) # conver to column vector
+    node_offset = (node_vec - idx_center_node)*internodal_len
+    dist1 = np.sqrt((node_offset - e1_offset)**2 + elec_dist**2)
+    dist2 = np.sqrt((node_offset - e2_offset)**2 + elec_dist**2)
+    dist3 = np.sqrt((node_offset - e3_offset)**2 + elec_dist**2)
+
+    V1[kIdx] += np.sum(cur_Im_vec/(4*pi*dist1), 0)
+    V2[kIdx] += np.sum(cur_Im_vec/(4*pi*dist2), 0)
+    V3[kIdx] += np.sum(cur_Im_vec/(4*pi*dist3), 0)
+
+'''
+    # Vectorized code is almost 100 times faster..
+    for i in range(num_nodes):
+        node_offset = (i-idx_center_node)*internodal_len
+        dist1 = np.sqrt((node_offset - e1_offset)**2 + elec_dist**2)
+        dist2 = np.sqrt((node_offset - e2_offset)**2 + elec_dist**2)
+        dist3 = np.sqrt((node_offset - e3_offset)**2 + elec_dist**2)
+
+        for t in range(len(t_vec_py)):
+            V1[kIdx][t] += cur_Im_vec[i, t]/(4*pi*dist1)
+            V2[kIdx][t] += cur_Im_vec[i, t]/(4*pi*dist2)
+            V3[kIdx][t] += cur_Im_vec[i, t]/(4*pi*dist3)
+'''
+            
+# Plot measurement for different K-placements
+Vpp = np.zeros(len(K))
+f, axarr = plt.subplots(len(K), sharex=True)
+for kIdx in range(len(K)):
+    V_ref = (V1[kIdx] + V3[kIdx])/2
+    Vsig = V2[kIdx] - V_ref
+    Vpp[kIdx] = max(Vsig)-min(Vsig)
+    axarr[kIdx].plot(t_vec_py, Vsig)
+    axarr[kIdx].set_title('K=%d mm' % (K[kIdx]))
+    axarr[kIdx].set_ylabel('V (mV)')
+
+axarr[0].set_title('%s, fiber size=%.2f um, K=%d mm' % (rate, bundle_diam[fiberIdx], K[0]))
+axarr[-1].set_xlabel('Time (mS)')
+plt.show(block=False)
+
+# Plot Vpp as a function of K
+plt.figure()
+plt.plot(K, Vpp, 'b-*')
+plt.xlabel('K (mm)')
+plt.ylabel('Vpp (mV)')
+plt.show(block=False)

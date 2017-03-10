@@ -132,13 +132,13 @@ def getExtV(e1_offset, e2_offset, e3_offset, nerveBundle, elec_dist, Im_vec_py, 
             for t in range(len(t_vec_py)):
                 if Im_vec_py[node_row,t,j] is not np.nan:
                     if j >= 50:
-                        V1_small[t] = V1_small[t] + Im_vec_py[node_row, t, j]/(4*pi*dist1)
-                        V2_small[t] = V2_small[t] + Im_vec_py[node_row, t, j]/(4*pi*dist2)
-                        V3_small[t] = V3_small[t] + Im_vec_py[node_row, t, j]/(4*pi*dist3)
+                        V1_small[t] += Im_vec_py[node_row, t, j]/(4*pi*dist1)
+                        V2_small[t] += Im_vec_py[node_row, t, j]/(4*pi*dist2)
+                        V3_small[t] += Im_vec_py[node_row, t, j]/(4*pi*dist3)
                     else:
-                        V1_big[t] = V1_big[t] + Im_vec_py[node_row, t, j]/(4*pi*dist1)
-                        V2_big[t] = V2_big[t] + Im_vec_py[node_row, t, j]/(4*pi*dist2)
-                        V3_big[t] = V3_big[t] + Im_vec_py[node_row, t, j]/(4*pi*dist3)
+                        V1_big[t] += Im_vec_py[node_row, t, j]/(4*pi*dist1)
+                        V2_big[t] += Im_vec_py[node_row, t, j]/(4*pi*dist2)
+                        V3_big[t] += Im_vec_py[node_row, t, j]/(4*pi*dist3)
     return V1_big, V2_big, V3_big, V1_small, V2_small, V3_small
 
 def plotCNAP(V_ref, V_active, t_vec_py, K):
@@ -229,7 +229,15 @@ else:
     Center electrode is at the center of the fibers, which are all aligned.
     Spacing K is in mm.
     '''
-    K = [5.0, 10.0, 15.0, 20.0]   # recording electrode spacing in [mm]
+    K = [4.0, 5.0, 6.0, 10.0, 14.0, 15.0]   # recording electrode spacing in [mm]
+    
+    V1_big_all = []
+    V2_big_all = []
+    V3_big_all = []
+    V1_small_all = []
+    V2_small_all = []
+    V3_small_all = []
+
     for kk in K:
         e2_offset = 0            # electrode 2 aligned with center electrode
         e1_offset = -kk*(10**3)  # electrode 1 offset from center [um]
@@ -237,12 +245,48 @@ else:
 
         V1_big,V2_big,V3_big,V1_small,V2_small,V3_small = \
             getExtV(e1_offset, e2_offset, e3_offset, subset, simBunch.elec_dist*1000, Im_vec_py, t_vec_py)
+        
+        V1_big_all.append(V1_big)
+        V2_big_all.append(V2_big)
+        V3_big_all.append(V3_big)
+        V1_small_all.append(V1_small)
+        V2_small_all.append(V2_small)
+        V3_small_all.append(V3_small)
+        
         plotCNAP_pop(V1_big,V2_big,V3_big,V1_small,V2_small,V3_small,t_vec_py,kk)
         plt.savefig('p2_CNAP_K=%d_%d.png' % (kk, stimNodeScale), bbox_inches='tight')
 
         plotAtElec(V1_big, V2_big, V3_big, V1_small, V2_small, V3_small, t_vec_py, kk)
         plt.savefig('p2_allElec_K=%d_%d.png' % (kk, stimNodeScale), bbox_inches='tight')
 
+        np.savez('Vext_cathodicStim_k=%d_%dNodes.npz' % (kk, stimNodeScale), \
+                 V1_big, V2_big, V3_big, V1_small, V2_small, V3_small)
+
+    # Plot the Vpp for V_big, V_small, V_CNAP over different K
+    Vpp_big = []
+    Vpp_small = []
+    Vpp_CNAP = []
+    for i in range(len(K)):
+        Vbig = V2_big_all[i] - (V1_big_all[i] + V3_big_all[i])/2
+        Vpp_big.append( max(Vbig)-min(Vbig))
+
+        Vsmall = V2_small_all[i] - (V1_small_all[i] + V3_small_all[i])/2
+        Vpp_small.append(max(Vsmall)-min(Vsmall))
+
+        Vref = (V1_big_all[i] + V1_small_all[i] + V3_big_all[i] + V3_small_all[i])/2
+        Vall = (V2_big_all[i]+V2_small_all[i]) - Vref
+        Vpp_CNAP.append(max(Vall-Vref)-min(Vall-Vref))
+
+    plt.figure()
+    plt.plot(K, Vpp_big, 'b-*')
+    plt.plot(K, Vpp_small, 'r-*')
+    plt.plot(K, Vpp_CNAP, 'k-*')
+    plt.title('K vs. CNAP Vpp')
+    plt.xlabel('K (mm)')
+    plt.ylabel('Vpp (mV)')
+    plt.legend(['Big fibers', 'Small fibers', 'Overall'], loc='center left')
+    plt.show(block=False)
+    plt.savefig('p2_K_vs_CNAPVpp_%dNodes.png' % (stimNodeScale))
 
 
 

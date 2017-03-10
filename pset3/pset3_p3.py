@@ -116,7 +116,10 @@ if not saveDone:
 elif saveDone and calcSNR:
     print 'Calculate SNR'
 
-    K = [5.0, 10.0, 15.0, 20.0]
+    t_vec_py = np.load('./sim_data/t_vec_py_%s.npy' % (rate))
+    startIdx = np.where(t_vec_py >= 50)[0][0]   # we only look at signals after 50ms
+    
+    K = [4.0, 5.0, 6.0, 10.0, 14.0, 15.0]
     V1_big_base = []
     V2_big_base = []
     V3_big_base = []
@@ -131,24 +134,30 @@ elif saveDone and calcSNR:
     V2_small_active = []
     V3_small_active = []
 
+    Vpp_small_base = []
+    Vpp_small_active = []
+    Vpp_big_base = []
+    Vpp_big_active = []
+
     SNR_small = []
     SNR_big = []
+
     for kIdx in range(len(K)):
         npzfile = np.load('Vext_k=%d_baseRate.npz' % (int(K[kIdx])))
-        V1_big_base.append(npzfile['arr_0'])
-        V2_big_base.append(npzfile['arr_1'])
-        V3_big_base.append(npzfile['arr_2'])
-        V1_small_base.append(npzfile['arr_0'])
-        V2_small_base.append(npzfile['arr_1'])
-        V3_small_base.append(npzfile['arr_2'])
+        V1_big_base.append(npzfile['arr_0'][startIdx:])
+        V2_big_base.append(npzfile['arr_1'][startIdx:])
+        V3_big_base.append(npzfile['arr_2'][startIdx:])
+        V1_small_base.append(npzfile['arr_0'][startIdx:])
+        V2_small_base.append(npzfile['arr_1'][startIdx:])
+        V3_small_base.append(npzfile['arr_2'][startIdx:])
         
         npzfile = np.load('Vext_k=%d_activeRate.npz' % (int(K[kIdx])))
-        V1_big_active.append(npzfile['arr_0'])
-        V2_big_active.append(npzfile['arr_1'])
-        V3_big_active.append(npzfile['arr_2'])
-        V1_small_active.append(npzfile['arr_0'])
-        V2_small_active.append(npzfile['arr_1'])
-        V3_small_active.append(npzfile['arr_2'])
+        V1_big_active.append(npzfile['arr_0'][startIdx:])
+        V2_big_active.append(npzfile['arr_1'][startIdx:])
+        V3_big_active.append(npzfile['arr_2'][startIdx:])
+        V1_small_active.append(npzfile['arr_0'][startIdx:])
+        V2_small_active.append(npzfile['arr_1'][startIdx:])
+        V3_small_active.append(npzfile['arr_2'][startIdx:])
 
         V_big_base_ref = (V1_big_base[kIdx] + V3_big_base[kIdx])/2
         V_big_base_signal = V2_big_base[kIdx] - V_big_base_ref
@@ -162,31 +171,54 @@ elif saveDone and calcSNR:
         V_small_active_ref = (V1_small_active[kIdx] + V3_small_active[kIdx])/2
         V_small_active_signal = V2_small_active[kIdx] - V_small_active_ref
 
-        # SNR = 20*log(variance(active_signal)/(mse(active_signal-base_signal)))
-        mse_big = np.mean((V_big_active_signal - V_big_base_signal)**2)
-        var_big = np.var(V_big_active_signal)
-        SNR_big.append(20*np.log10(var_big/mse_big))
+        # Vpp
+        Vpp_small_base.append(max(V_small_base_signal)-min(V_small_base_signal))
+        Vpp_small_active.append(max(V_small_active_signal)-min(V_small_active_signal))
+        Vpp_big_base.append(max(V_big_base_signal)-min(V_big_base_signal))
+        Vpp_big_active.append(max(V_big_active_signal)-min(V_big_active_signal))
 
-        mse_small = np.mean((V_small_active_signal - V_small_base_signal)**2)
-        var_small = np.var(V_small_active_signal)
-        SNR_small.append(20*np.log10(var_small/mse_small))
+        # SNR = 20*log(variance(active_signal)/(mse(active_signal-base_signal)))
+        noise = V_small_base_signal + V_big_base_signal
+        
+        #mse_big = np.mean( (V_big_active_signal + V_small_base_signal - noise)**2)
+        var_big = np.var(V_big_active_signal + V_small_base_signal)
+        #SNR_big.append(var_big/mse_big)
+        SNR_big.append(var_big/np.var(noise))
+
+        #mse_small = np.mean((V_small_active_signal + V_big_base_signal - noise)**2)
+        var_small = np.var(V_small_active_signal + V_big_base_signal)
+        #SNR_small.append(var_small/mse_small)
+        SNR_small.append(var_small/np.var(noise))
 
     plt.figure()
     plt.plot(K, SNR_big, 'b*-')
     plt.plot(K, SNR_small, 'r*-')
-    plt.legend(['big', 'small'])
+    plt.legend(['big fiber', 'small fiber'], loc='top left')
     plt.xlabel('Electrode spacing (mm)')
-    plt.ylabel('SNR (dB)')
+    plt.ylabel('SNR')
+    plt.title('ENG K vs. SNR')
     plt.show(block=False)
     plt.savefig('p3_SNR.png', bbox_inches='tight')
 
+    plt.figure()
+    plt.plot(K, Vpp_small_base, 'b*:')
+    plt.plot(K, Vpp_small_active, 'b*-')
+    plt.plot(K, Vpp_big_base, 'r*:')
+    plt.plot(K, Vpp_big_active, 'r*-')
+    plt.legend(['Small base-rate', 'Small active', 'Big base-rate', 'Big active'], loc='lower right')
+    plt.xlabel('Electrode spacing (mm)')
+    plt.ylabel('Vpp (mV)')
+    plt.title('ENG Vpp vs. K')
+    plt.show(block=False)
+    plt.savefig('p3_ENG_VPP.png', bbox_inches='tight')
+
 else:
     print 'Data already collected, calculating extracellular potential..'
-    elec_dist = 1 # electrode 1mm away from fibers
+    elec_dist = 1000 # electrode 1mm=1000um away from fibers...IMPORTANT!!!
     nNerves = len(bundle_diam)
     t_vec_py = np.load('./sim_data/t_vec_py_%s.npy' % (rate))
 
-    K = [5.0, 10.0, 15.0, 20.0]
+    K = [4.0, 5.0, 6.0, 10.0, 14.0, 15.0]
     V1_big = []
     V2_big = []
     V3_big = []
@@ -221,21 +253,21 @@ else:
             e1_offset = -kval*(10**3)  # electrode 1 offset from center [um]
             e3_offset = kval*(10**3)   # electrode 3 offset from center [um]
 
-            for i in range(num_nodes):
-                node_offset = (i-idx_center_node)*internodal_len
-                dist1 = np.sqrt((node_offset - e1_offset)**2 + elec_dist**2)
-                dist2 = np.sqrt((node_offset - e2_offset)**2 + elec_dist**2)
-                dist3 = np.sqrt((node_offset - e3_offset)**2 + elec_dist**2)
+            node_vec = np.arange(num_nodes)
+            node_vec.shape = (num_nodes, 1) # conver to column vector
+            node_offset = (node_vec - idx_center_node)*internodal_len
+            dist1 = np.sqrt((node_offset - e1_offset)**2 + elec_dist**2)
+            dist2 = np.sqrt((node_offset - e2_offset)**2 + elec_dist**2)
+            dist3 = np.sqrt((node_offset - e3_offset)**2 + elec_dist**2)
 
-                for t in range(len(t_vec_py)):
-                    if j >= 50:
-                        V1_small[kIdx][t] += cur_Im_vec[i, t]/(4*pi*dist1)
-                        V2_small[kIdx][t] += cur_Im_vec[i, t]/(4*pi*dist2)
-                        V3_small[kIdx][t] += cur_Im_vec[i, t]/(4*pi*dist3)
-                    else:
-                        V1_big[kIdx][t] += cur_Im_vec[i, t]/(4*pi*dist1)
-                        V2_big[kIdx][t] += cur_Im_vec[i, t]/(4*pi*dist2)
-                        V3_big[kIdx][t] += cur_Im_vec[i, t]/(4*pi*dist3)
+            if j >= 50:
+                V1_small[kIdx] += np.sum(cur_Im_vec/(4*pi*dist1), 0)
+                V2_small[kIdx] += np.sum(cur_Im_vec/(4*pi*dist2), 0)
+                V3_small[kIdx] += np.sum(cur_Im_vec/(4*pi*dist3), 0)
+            else:
+                V1_big[kIdx] += np.sum(cur_Im_vec/(4*pi*dist1), 0)
+                V2_big[kIdx] += np.sum(cur_Im_vec/(4*pi*dist2), 0)
+                V3_big[kIdx] += np.sum(cur_Im_vec/(4*pi*dist3), 0)
 
     # Plot the ENG
     for kIdx in range(len(K)):
@@ -251,10 +283,17 @@ else:
         ax1.set_title('ENG, big fibers, K=%.2f mm, %s' % (K[kIdx], rate))
         ax2.set_title('ENG, small fibers')
         ax3.set_title('ENG, all fibers')
+        
         ax1.set_ylabel('V (mV)')
         ax2.set_ylabel('V (mV)')
         ax3.set_ylabel('V (mV)')
+        
         ax3.set_xlabel('Time (mS)')
+        ax1.set_xlim([50, t_vec_py[-1]])
+
+        ax1.set_ylim([-0.08, 0.08])
+        ax2.set_ylim([-0.015, 0.015])
+        ax3.set_ylim([-0.08, 0.08])
         plt.show(block=False)
 
         plt.savefig('p3_ENG_%s_k=%d.png' % (rate, K[kIdx]), bbox_inches='tight')
