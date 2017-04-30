@@ -3,12 +3,12 @@ from PNS import *
 # Initialize sweeney nerve
 initBunch = Bunch()
 initBunch.fiber_diam = 12.0 # [um]
-initBunch.scale_diam = 0.6
+initBunch.scale_diam = 0.7
 initBunch.num_nodes = 51
 initBunch.num_seg = 1
-initBunch.rho_a = 54.7      # [ohm-cm]
-initBunch.rho_e = 500       # [ohm-cm]
-initBunch.node_cm = 2.5     # [uF/cm^2]
+initBunch.rho_a = 100.0      # [ohm-cm]
+initBunch.rho_e = 500.0      # [ohm-cm]
+initBunch.node_cm = 1.0     # [uF/cm^2]
 initBunch.node_len = 1.5    # [um]
 initBunch.scale_len = 100.0
 nerve = MyelinatedNerve(initBunch, sweeneyCh)  
@@ -19,9 +19,9 @@ initBunch2.fiber_diam = 12.0 # [um]
 initBunch2.scale_diam = 0.7
 initBunch2.num_nodes = 51
 initBunch2.num_seg = 1
-initBunch2.rho_a = 54.7      # [ohm-cm]
+initBunch2.rho_a = 100.0      # [ohm-cm]
 initBunch2.rho_e = 500       # [ohm-cm]
-initBunch2.node_cm = 2.5     # [uF/cm^2]
+initBunch2.node_cm = 1.0     # [uF/cm^2]
 initBunch2.node_len = 1.5    # [um]
 initBunch2.scale_len = 100.0
 nerve2 = MyelinatedNerve(initBunch2, passiveSweeneyCh)  
@@ -34,7 +34,7 @@ elec = DummyElectrode(mydel, myamp, mydur)
 
 # Initialize simulation
 simBunch = Bunch()
-simBunch.dt = 0.005     # [ms]
+simBunch.dt = 0.01     # [ms], used to be 0.005
 simBunch.tstop = 10.0   # [ms]
 simBunch.v_init = -80   # [mV]
 simBunch.celsius = 37   # [deg C]
@@ -66,7 +66,8 @@ def AP_status(Vm_vec_py):
     except:
         import pdb; pdb.set_trace()
         print "here"
-    tooHigh = (np.max(Vm_vec_py) - 13 > 1)
+    print "max(Vm_vec_py) is ", np.max(Vm_vec_py)
+    tooHigh = (np.max(Vm_vec_py) - 13 > 0.8)
 
     if not AP:
         return -1
@@ -119,7 +120,7 @@ def strength_duration(mySim, durations, lo_lim, hi_lim, evalFn, msgFn):
         myamp = np.mean((lo_amp,hi_amp))
         mySim.elec.setAmp(myamp)
         Vm_vec_py, status = runSimAgain(mySim, evalFn)
-        
+       
         while status != 0:
             if status == 1: # current too high
                 hi_amp = myamp
@@ -198,7 +199,8 @@ def p1_3_2(threshCurCat, threshCurAn):
     """
     amp_cat = threshCurCat[4]
     amp_an = threshCurAn[4]
-    sim1.elec.setDur(200e-6/1e-3)   # 200us stimulation
+    #sim1.elec.setDur(200e-6/1e-3)   # 200us stimulation
+    sim1.elec.setDur(1)
     
     # cathodic stimulation
     sim1.elec.setAmp(amp_cat)
@@ -238,7 +240,7 @@ def p1_4(Vm_cat, Vm_an, mySim):
     Calculate conduction velocity from Vm of the simulation
     """
     f, axarr = plt.subplots(2, sharex=True)
-    startNode = 30
+    startNode = 10
     endNode = 50    # not 51 to avoid edge effects 
     catMaxIdx = []
     anMaxIdx = []
@@ -256,7 +258,7 @@ def p1_4(Vm_cat, Vm_an, mySim):
     axarr[1].set_xlabel('Time (mS)')
     axarr[1].set_ylabel('Vm (mV)')
     plt.show(block=False)
-    plt.savefig('sweeneyActive_strengthDuration_catVsAn_time.png', bbox_inches='tight')
+    #plt.savefig('sweeneyActive_strengthDuration_catVsAn_time.png', bbox_inches='tight')
 
     # calculate conduction velocity
     dist = mySim.nerve.params.internodal_len * 2    # [um]
@@ -322,6 +324,6 @@ def p1_5(Ith, durations):
 threshCur1 = p1_1()
 threshCur2 = p1_2()
 threshCur3 = p1_3_1()
-(Vm_cat, Vm_an) = p1_3_2(threshCur1, threshCur3)
-p1_4(Vm_cat, Vm_an, sim1)
-Irh, Tch = p1_5(threshCur1, durations)
+#(Vm_cat, Vm_an) = p1_3_2(threshCur1, threshCur3)
+#p1_4(Vm_cat, Vm_an, sim1)
+#Irh, Tch = p1_5(threshCur1, durations)
